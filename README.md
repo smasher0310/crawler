@@ -1,0 +1,1 @@
+A simple web crawler that crawls the specifie url links and store the details in monogDB.
