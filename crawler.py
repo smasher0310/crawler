@@ -1,6 +1,9 @@
 import requests
 from urllib.parse import urlparse
 from bs4 import BeautifulSoup
+import cfg
+import persistence  
+import time, os
 
 class crawler():
     """A simple Crawler"""
@@ -8,7 +11,6 @@ class crawler():
         self.threadcount = 1
         self.url =  url
         self.sleeptime = 0
-        self.links = []
     
     # do http request
     def makeGetRequest(self,url):
@@ -16,37 +18,67 @@ class crawler():
             response = requests.get(url)
             return response
         except:
-            print('Something terrible happend! Cannot do http request {}'.format(url))
             return None
-
-    # read configuration
-    def readConfiguration(self):
-        print('Read configuration')
 
     # intial crawl to populate the database
     def setup(self):
-        print('intial crawling: url(' + self.url + ')')
-        response = self.makeGetRequest(self.url)
-        if  response is not None:
-            print(response.status_code)
-            soup = BeautifulSoup(response.content,'html.parser')
-            for link in soup.find_all('a'):
-                # print(link.get('href'))
-                self.links.append(link.get('href'))
-            # print(self.links)
-        else:
-            print('Initial Url failed')
+        persistence.setup()
+
+        #add the base url to DB 
+        persistence.addDocument(self.url,self.url)
 
 
     # crawl the links       
     def crawl(self):
+        cycleCount = 0
         while(1):
-            #loop over the collection to crawl 
             try:
-                r = requests.get(self.url)
-                print(len(r.text))
-            except:
-                print('Something terrible happend! Cannot do http request')
+                # get the uncrawled url from DB
+                items = persistence.getLinks()
+
+                if items is None:
+                    print('No link to crawl! Exit')
+                    break
+                cycleCount =  cycleCount + 1
+                print('Cycle {} started'.format(cycleCount))
+                for item in items:
+
+                    # link in DB is 5000
+                    if cfg.link_count == cfg.link_limit:
+                        print('Maximum limit reached')
+                        break
+
+                    res = self.makeGetRequest(item['link'])
+                    if res is None:
+                        continue
+
+                    # write the content to new file
+                    filename = os.path.join(os.getcwd(),cfg.html_folder,str(time.time_ns())+".html")
+                    file = open(filename,'w')
+                    file.write(res.text)
+                    file.close()
+
+                    #update the info related with this link
+                    # split(';')[0].split('/')[-1]
+                    persistence.updateDocument(item['_id'],res.status_code,filename,res.headers['content-type'],len(res.text))
+                    
+                    # crawl and save links to DB
+                    print('crawling the page: {}'.format(item['link']))
+                    soup = BeautifulSoup(res.text,'html.parser')
+                    for link in soup.find_all('a'): 
+                        # print(link.get('href'))
+                        if isAbsolute(link.get('href')):
+                            persistence.addDocument(link.get('href'),item['link'])
+                        else:
+                            persistence.addDocument(self.url + link.get('href'),item['link'])
+                
+                # sleep for 5s between cycles
+                print('total link in DB {}'.format(cfg.link_count))
+                print('sleeping for 5 sec.....................')
+                time.sleep(5)
+                
+            except Exception as e:
+                print('crawler.py:{}'.format(e))
 
 
 # check if url is absolute URL
@@ -65,6 +97,7 @@ def main():
 
     c =  crawler(url)
     c.setup()
+    c.crawl()
     
 
 
