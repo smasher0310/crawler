@@ -37,17 +37,17 @@ def addDocument(url,rootUrl):
         'createdAt':            datetime.datetime.utcnow()
     }
     links.insert_one(doc)
-# '{}.html'.format(time.time_ns()),   #time in ns from EPOCH as filename
 
 # get the links that has not been crawled yet
 def getLinks():
-    return links.find({"isCrawled":False})
-
-def getDocumentCount(root):
-    return links.count_documents({'srcLink':root})
+    items = links.find({"isCrawled":False})
+    itemList = []
+    for item in items:
+        itemList.append(item)
+    return itemList
 
 # # update status of the crawl
-def updateDocument(oid,status,filePath,contentType,contentLen):
+def updateDocument(oid,status,filePath,contentType,contentLen,isCrawled):
     if not connected:
         exit('DB not connectd')
         return
@@ -56,7 +56,7 @@ def updateDocument(oid,status,filePath,contentType,contentLen):
         links.update_one(
             {'_id':oid},
             { '$set' : {
-                    'isCrawled':            True,
+                    'isCrawled':            isCrawled,
                     'lastCrawlDate':        datetime.datetime.utcnow(),
                     'responseStatus':       status,
                     'contentType':          contentType,
@@ -69,3 +69,5 @@ def updateDocument(oid,status,filePath,contentType,contentLen):
         print(e)
 
 
+def countDocuments(cond):
+    return links.count_documents(cond)
