@@ -30,7 +30,8 @@ class crawler():
 
         if cfg.link_count >= cfg.link_limit:
             return
-            
+        
+        print('Requesting for the page {}'.format(item['link']))
         res = self.makeGetRequest(item['link'])
         if res is None:
             return
@@ -75,15 +76,17 @@ class crawler():
         cycleCount = 0
         while(1):
             try:
-                # get the uncrawled url from DB
-                items = persistence.getLinks()
 
-                if items is None:
-                    print('No link to crawl! Exit')
-                    time.sleep(5)
-                    break
                 cycleCount =  cycleCount + 1
                 print('Cycle {} started'.format(cycleCount))
+
+                # get the uncrawled url from DB
+                items = persistence.getLinks()
+                if len(items) == 0:
+                    print('All links crawled')
+                    print('sleeping for 5 sec.....................\n\n')
+                    time.sleep(5)
+                    continue
 
                 executor = ThreadPoolExecutor(cfg.thread_count)
 
@@ -100,8 +103,8 @@ class crawler():
                 # sleep for 5s between cycles
                 crawledDocumentsCount = persistence.countDocuments({'isCrawled' : True})
                 notCrawledDocumentsCount = persistence.countDocuments({'isCrawled': False})
-                print('Pages scraped: {}\t Total Link count: {}'.format(crawledDocumentsCount,crawledDocumentsCount+notCrawledDocumentsCount))
-                print('sleeping for 5 sec.....................')
+                print('Pages Scraped: {}\t Total Link count: {}'.format(crawledDocumentsCount,crawledDocumentsCount+notCrawledDocumentsCount))
+                print('sleeping for 5 sec.....................\n\n')
                 time.sleep(5)
             except Exception as e:
                 print('crawler.py:{}'.format(e))

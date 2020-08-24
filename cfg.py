@@ -7,5 +7,6 @@ link_count = 0
 thread_count=5
 file_ext = {
     'text/html; charset=utf-8'                : 'html',
-    'application/json; charset=utf-8'         : 'json'
+    'application/json; charset=utf-8'         : 'json',
+    'application/json'                        : 'json'
 }

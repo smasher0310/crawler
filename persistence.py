@@ -1,7 +1,8 @@
 from pymongo import MongoClient
 import cfg
 import time
-import datetime
+from datetime import datetime
+from datetime import timedelta  
 
 links = None
 connected = False
@@ -13,7 +14,7 @@ def setup():
         db = client[cfg.DB_Name]
         links = db.links
         connected =  True
-        print('Connected to {} DB {}'.format(cfg.DB_Name,db))
+        print('Connected to {} DB {}\n'.format(cfg.DB_Name,db))
     except:
         print('Error in connecting to DB')
 
@@ -34,13 +35,17 @@ def addDocument(url,rootUrl):
         'contentType':          None,
         'contentLen':            0,
         'filePath':             '',
-        'createdAt':            datetime.datetime.utcnow()
+        'createdAt':            datetime.now()
     }
     links.insert_one(doc)
 
 # get the links that has not been crawled yet
 def getLinks():
-    items = links.find({"isCrawled":False})
+    items = links.find({ '$or': [
+                                    {"isCrawled"     : False},
+                                    {'lastCrawlDate' : { '$lt' : datetime.now() - timedelta(days=1)}}
+                                ]
+                        })   
     itemList = []
     for item in items:
         itemList.append(item)
@@ -54,10 +59,10 @@ def updateDocument(oid,status,filePath,contentType,contentLen,isCrawled):
 
     try:
         links.update_one(
-            {'_id':oid},
+            {'_id': oid},
             { '$set' : {
                     'isCrawled':            isCrawled,
-                    'lastCrawlDate':        datetime.datetime.utcnow(),
+                    'lastCrawlDate':        datetime.now(),
                     'responseStatus':       status,
                     'contentType':          contentType,
                     'contentLen':           contentLen,
