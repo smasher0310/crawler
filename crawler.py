@@ -23,7 +23,7 @@ class crawler():
     def setup(self):
         persistence.setup()
 
-        #add the base url to DB 
+        # add the base url to DB 
         persistence.addDocument(self.url,self.url)
 
     def do_crawl(self,item):
@@ -35,15 +35,19 @@ class crawler():
         res = self.makeGetRequest(item['link'])
         if res is None:
             return
-
-        if not res.headers['content-type'] in cfg.file_ext.keys():
-            filetype = 'unknown'
+        # if filepath exist, overwrite it
+        if not item['filePath'] == '':
+            filepath = item['filePath']
         else:
-            filetype = cfg.file_ext[res.headers['content-type']]
+            # find the suitable extension 
+            if not res.headers['content-type'] in cfg.file_ext.keys():
+                filetype = 'unknown'
+            else:
+                filetype = cfg.file_ext[res.headers['content-type']]
+            # create unique filename
+            filename = '{}.{}'.format(str(time.time_ns()),filetype)
+            filepath = os.path.join(cfg.html_folder_path,filename)
 
-        filename = '{}.{}'.format(str(time.time_ns()),filetype)
-        # write the content to new file
-        filepath = os.path.join(cfg.html_folder_path,filename)
         file = open(filepath,'w')
         file.write(res.text)
         file.close()
