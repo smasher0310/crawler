@@ -6,6 +6,7 @@ from datetime import timedelta
 
 links = None
 connected = False
+linkCount = 0
 
 def setup():
     global connected, links
@@ -15,37 +16,53 @@ def setup():
         links = db.links
         connected =  True
         print('Connected to {} DB {}\n'.format(cfg.DB_Name,db))
+        links.create_index(str("link"),unique=True)
     except:
         print('Error in connecting to DB')
+        
+
+def add_bulk(data):
+    global linkCount
+    try:
+        prev = documentCount()
+        links.insert_many(data,ordered=False)
+        curr = documentCount()
+        linkCount = linkCount +  curr - prev
+    except: 
+        pass
 
 def addDocument(url,rootUrl):
-    ret = links.find_one({
-        'link': url
-    })
-    if not ret is None:
-        # print('{} already in DB'.format(url))
-        return 
-    cfg.link_count = cfg.link_count + 1
-    doc = {
-        'link':                 url,
-        'srcLink':              rootUrl,
-        'isCrawled':            False,
-        'lastCrawlDate':        None,
-        'responseStatus':       404,
-        'contentType':          None,
-        'contentLen':            0,
-        'filePath':             '',
-        'createdAt':            datetime.now()
-    }
-    links.insert_one(doc)
+    global linkCount
+    try:
+        prev = documentCount()
+        doc = {
+            'link':                 url,
+            'srcLink':              rootUrl,
+            'isCrawled':            False,
+            'lastCrawlDate':        None,
+            'responseStatus':       404,
+            'contentType':          None,
+            'contentLen':            0,
+            'filePath':             '',
+            'createdAt':            datetime.now()
+        }
+        links.insert_one(doc)
+        curr = documentCount()
+        linkCount = linkCount + curr-prev
+
+    except: 
+        pass
 
 # get the links that has not been crawled yet
 def getLinks():
-    items = links.find({ '$or': [
-                                    {"isCrawled"     : False},
-                                    {'lastCrawlDate' : { '$lt' : datetime.now() - timedelta(days=1)}}
-                                ]
-                        })   
+    try:
+        items = links.find({ '$or': [
+                                        {"isCrawled"     : False},
+                                        {'lastCrawlDate' : { '$lt' : datetime.now() - timedelta(days=cfg.days)}}
+                                    ]
+                            })   
+    except :
+        pass
     itemList = []
     for item in items:
         itemList.append(item)
@@ -74,5 +91,8 @@ def updateDocument(oid,status,filePath,contentType,contentLen,isCrawled):
         print(e)
 
 
-def countDocuments(cond):
-    return links.count_documents(cond)
+def documentCount():
+    return links.count_documents({'isCrawled':True}) + links.count_documents({'isCrawled':False})
+
+def scrapedDocumentCount():
+    return links.count_documents({'isCrawled':True})

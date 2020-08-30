@@ -5,11 +5,14 @@ import cfg
 import persistence  
 import time, os
 from concurrent.futures import ThreadPoolExecutor
+from datetime import datetime
 
 class crawler():
     """A simple Crawler"""
     def __init__(self,url):
         self.url =  url
+        self.prevDocCount  = 0
+        self.CurrDocCount = 0
     
     # do http request
     def makeGetRequest(self,url):
@@ -23,15 +26,52 @@ class crawler():
     def setup(self):
         persistence.setup()
 
+        #create folder for crawled files
+        if not os.path.exists(os.path.join(os.getcwd(),cfg.local_folder)):
+            os.makedirs(cfg.local_folder)
+
         # add the base url to DB 
         persistence.addDocument(self.url,self.url)
 
+    def findExtension(self,contentType):
+        ext = ''
+        if 'htm' in contentType:
+            ext = 'html'
+        elif 'json' in contentType:
+            ext = 'json'
+        elif 'javascript' in contentType:
+            ext = 'js'
+        elif 'css' in contentType:
+            ext = 'css'
+        elif 'png' in contentType:
+            ext = 'png'
+        elif 'jpeg' in contentType or 'jpg' in contentType :
+            ext = 'jpeg'
+        elif 'pdf' in contentType:
+            ext = 'pdf'
+        elif 'zip' in contentType:
+            ext = 'zip'
+        else:
+            ext = 'unknown'
+        return ext
+
+    def checkLimitReached(self):
+        self.CurrDocCount = persistence.documentCount()
+
+        if (self.CurrDocCount - self.prevDocCount) < cfg.link_limit:
+           return False
+        else:
+            self.prevDocCount = self.CurrDocCount
+            return True
+
+
     def do_crawl(self,item):
 
-        if cfg.link_count >= cfg.link_limit:
+        if self.checkLimitReached():
+            print('Thread stopped')
             return
         
-        print('Requesting for the page {}'.format(item['link']))
+        # print('Requesting for the page {}'.format(item['link']))
         res = self.makeGetRequest(item['link'])
         if res is None:
             return
@@ -40,13 +80,9 @@ class crawler():
             filepath = item['filePath']
         else:
             # find the suitable extension 
-            if not res.headers['content-type'] in cfg.file_ext.keys():
-                filetype = 'unknown'
-            else:
-                filetype = cfg.file_ext[res.headers['content-type']]
-            # create unique filename
+            filetype = self.findExtension(res.headers['content-type'])
             filename = '{}.{}'.format(str(time.time_ns()),filetype)
-            filepath = os.path.join(cfg.html_folder_path,filename)
+            filepath = os.path.join(cfg.local_folder,filename)
 
         file = open(filepath,'w')
         file.write(res.text)
@@ -58,22 +94,37 @@ class crawler():
         
         # crawl and save links to DB
         soup = BeautifulSoup(res.text,'html.parser')
+        docs = []
         for link in soup.find_all('a'): 
 
             # link in DB is >=5000, defer to crawl 
-            if cfg.link_count >= cfg.link_limit:
+            if self.checkLimitReached():
                 #mark the page uncrawled and return
                 persistence.updateDocument(item['_id'],res.status_code,filepath,res.headers['content-type'],len(res.text),False)
+                print('Thread stopped after writting')
                 return
 
-            # print(link.get('href'))
+            newLink = ''
             if isAbsolute(link.get('href')):
-                persistence.addDocument(link.get('href'),item['link'])
+                newLink = link.get('href')
             else:
                 # create absolute path
-                newPath = urljoin(item['link'],link.get('href'))
-                if isAbsolute(newPath):
-                    persistence.addDocument(newPath,item['link'])
+                newLink = urljoin(item['link'],link.get('href'))
+                if not isAbsolute(newLink):
+                    continue
+
+            docs.append({
+                            'link':                 newLink,
+                            'srcLink':              item['link'],
+                            'isCrawled':            False,
+                            'lastCrawlDate':        None,
+                            'responseStatus':       404,
+                            'contentType':          None,
+                            'contentLen':            0,
+                            'filePath':             '',
+                            'createdAt':            datetime.now()
+            })
+        persistence.add_bulk(docs)
                 
     # crawl the links       
     def crawl(self):
@@ -91,23 +142,26 @@ class crawler():
                     print('sleeping for 5 sec.....................\n\n')
                     time.sleep(5)
                     continue
-
+                
+                futures = []
                 executor = ThreadPoolExecutor(cfg.thread_count)
-
                 for item in items:
-                    if cfg.link_count >= cfg.link_limit:
-                        # terminate the threads and reset the counter for next cycle
-                        executor.shutdown(wait=True)
-                        print("Maximum Limit Reached\nResetting the limit to 0")
-                        cfg.link_count = 0
+                    if self.checkLimitReached():
+                        # terminate the threads
+                        print("Maximum Limit Reached")
+                        for f in futures:
+                            f.cancel()
+                        executor.shutdown(wait=False)
                         break
-                    executor.submit(self.do_crawl,item)
+                    futures.append(executor.submit(self.do_crawl,item))
                     
                 executor.shutdown(wait=True)
-                # sleep for 5s between cycles
-                crawledDocumentsCount = persistence.countDocuments({'isCrawled' : True})
-                notCrawledDocumentsCount = persistence.countDocuments({'isCrawled': False})
-                print('Pages Scraped: {}\t Total Link count: {}'.format(crawledDocumentsCount,crawledDocumentsCount+notCrawledDocumentsCount))
+
+                print('Pages Scraped: {}\t Total Link count: {}'.format(persistence.scrapedDocumentCount(),persistence.documentCount()))
+                
+                # resetting
+                
+
                 print('sleeping for 5 sec.....................\n\n')
                 time.sleep(5)
             except Exception as e:
