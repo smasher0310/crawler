@@ -43,7 +43,7 @@ def addDocument(url,rootUrl):
 def getLinks():
     items = links.find({ '$or': [
                                     {"isCrawled"     : False},
-                                    {'lastCrawlDate' : { '$lt' : datetime.now() - timedelta(days=1)}}
+                                    {'lastCrawlDate' : { '$lt' : datetime.now() - timedelta(days = cfg.days)}}
                                 ]
                         })   
     itemList = []

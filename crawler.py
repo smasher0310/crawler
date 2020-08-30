@@ -21,6 +21,13 @@ class crawler():
 
     # intial crawl to populate the database
     def setup(self):
+        #create folder
+        if not os.path.isdir(os.path.join(os.getcwd(),cfg.local_folder)):
+
+            # make folder for local files
+            os.makedirs(os.path.join(os.getcwd(),cfg.local_folder))
+
+        # setup connection to DB
         persistence.setup()
 
         # add the base url to DB 
@@ -31,10 +38,12 @@ class crawler():
         if cfg.link_count >= cfg.link_limit:
             return
         
-        print('Requesting for the page {}'.format(item['link']))
+        # print('Requesting for the page {}'.format(item['link']))
         res = self.makeGetRequest(item['link'])
-        if res is None:
+
+        if res is None or (not res.status_code == 200):
             return
+        
         # if filepath exist, overwrite it
         if not item['filePath'] == '':
             filepath = item['filePath']
@@ -46,8 +55,9 @@ class crawler():
                 filetype = cfg.file_ext[res.headers['content-type']]
             # create unique filename
             filename = '{}.{}'.format(str(time.time_ns()),filetype)
-            filepath = os.path.join(cfg.html_folder_path,filename)
+            filepath = os.path.join(os.getcwd(),cfg.local_folder,filename)
 
+        
         file = open(filepath,'w')
         file.write(res.text)
         file.close()
@@ -79,40 +89,36 @@ class crawler():
     def crawl(self):
         cycleCount = 0
         while(1):
-            try:
 
-                cycleCount =  cycleCount + 1
-                print('Cycle {} started'.format(cycleCount))
+            cycleCount =  cycleCount + 1
+            print('Cycle {} started'.format(cycleCount))
 
-                # get the uncrawled url from DB
-                items = persistence.getLinks()
-                if len(items) == 0:
-                    print('All links crawled')
-                    print('sleeping for 5 sec.....................\n\n')
-                    time.sleep(5)
-                    continue
-
-                executor = ThreadPoolExecutor(cfg.thread_count)
-
-                for item in items:
-                    if cfg.link_count >= cfg.link_limit:
-                        # terminate the threads and reset the counter for next cycle
-                        executor.shutdown(wait=True)
-                        print("Maximum Limit Reached\nResetting the limit to 0")
-                        cfg.link_count = 0
-                        break
-                    executor.submit(self.do_crawl,item)
-                    
-                executor.shutdown(wait=True)
-                # sleep for 5s between cycles
-                crawledDocumentsCount = persistence.countDocuments({'isCrawled' : True})
-                notCrawledDocumentsCount = persistence.countDocuments({'isCrawled': False})
-                print('Pages Scraped: {}\t Total Link count: {}'.format(crawledDocumentsCount,crawledDocumentsCount+notCrawledDocumentsCount))
+            # get the uncrawled url from DB
+            items = persistence.getLinks()
+            if len(items) == 0:
+                print('All links crawled')
                 print('sleeping for 5 sec.....................\n\n')
                 time.sleep(5)
-            except Exception as e:
-                print('crawler.py:{}'.format(e))
+                continue
 
+            executor = ThreadPoolExecutor(cfg.thread_count)
+
+            for item in items:
+                if cfg.link_count >= cfg.link_limit:
+                    # terminate the threads and reset the counter for next cycle
+                    executor.shutdown(wait=True)
+                    print("Maximum Limit Reached")
+                    cfg.link_count = 0
+                    break
+                executor.submit(self.do_crawl,item)
+                
+            executor.shutdown(wait=True)
+            # sleep for 5s between cycles
+            crawledDocumentsCount = persistence.countDocuments({'isCrawled' : True})
+            notCrawledDocumentsCount = persistence.countDocuments({'isCrawled': False})
+            print('Pages Scraped: {}\t Total Link count: {}'.format(crawledDocumentsCount,crawledDocumentsCount+notCrawledDocumentsCount))
+            print('sleeping for 5 sec.....................\n\n')
+            time.sleep(5)
 
 # check if url is absolute URL
 def isAbsolute(url):
@@ -121,18 +127,20 @@ def isAbsolute(url):
     return False        
 
 def main():
-    url = input('Enter url to crawl: ')
-
+    url = cfg.url
+    print('URl: ',cfg.url)
     # check if url is FQ URL
     if not isAbsolute(url):
         print('Invalid URL')
         exit(1)
 
     c =  crawler(url)
-    c.setup()
-    c.crawl()
+    try:
+        c.setup()
+        c.crawl()
+    except Exception as e:
+        print('Exception occured',e)
     
-
 
 if __name__ == '__main__':
     main()
